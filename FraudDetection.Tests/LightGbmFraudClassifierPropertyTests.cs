@@ -23,7 +23,7 @@ public class LightGbmFraudClassifierPropertyTests
     /// with IsFraudTransaction as a boolean value.
     /// **Validates: Requirements 3.1**
     /// </summary>
-    /*[Property(MaxTest = 100)]
+    [Property(MaxTest = 100)]
     public bool FraudClassifierAlwaysReturnsBinaryOutput(PositiveInt seed)
     {
         // Use seed for reproducibility while varying the random data
@@ -91,5 +91,5 @@ public class LightGbmFraudClassifierPropertyTests
         // (this is a sanity check that the prediction was made correctly)
         return prediction != null && 
                (prediction.IsFraudTransaction == true || prediction.IsFraudTransaction == false);
-    }*/
+    }
 }

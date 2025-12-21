@@ -104,8 +104,12 @@ public class LightGbmFraudClassifier : IFraudClassifier
         // Train the model
         _model = pipeline.Fit(dataView);
 
-        // Create prediction engine
-        _predictionEngine = _mlContext.Model.CreatePredictionEngine<ClassificationFeatures, FraudPredictionOutput>(_model);
+        // Create prediction engine with explicit input schema
+        var inputSchemaDefinition = SchemaDefinition.Create(typeof(ClassificationFeatures));
+        inputSchemaDefinition["Features"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, _featureCount);
+        _predictionEngine = _mlContext.Model.CreatePredictionEngine<ClassificationFeatures, FraudPredictionOutput>(
+            _model, 
+            inputSchemaDefinition: inputSchemaDefinition);
 
         _isTrained = true;
     }
@@ -182,7 +186,16 @@ public class LightGbmFraudClassifier : IFraudClassifier
             Directory.CreateDirectory(directory);
         }
 
-        _mlContext.Model.Save(_model, null, path);
+        // Create schema with known vector size for saving
+        var schemaDefinition = SchemaDefinition.Create(typeof(ClassificationFeatures));
+        schemaDefinition["Features"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, _featureCount);
+        var emptyData = _mlContext.Data.LoadFromEnumerable(Array.Empty<ClassificationFeatures>(), schemaDefinition);
+
+        _mlContext.Model.Save(_model, emptyData.Schema, path);
+        
+        // Save feature count to a separate file
+        var metadataPath = path + ".meta";
+        File.WriteAllText(metadataPath, _featureCount.ToString());
     }
 
     /// <summary>
@@ -201,6 +214,18 @@ public class LightGbmFraudClassifier : IFraudClassifier
             throw new FileNotFoundException("Model file not found.", path);
         }
 
+        // Load feature count from metadata file
+        var metadataPath = path + ".meta";
+        if (File.Exists(metadataPath))
+        {
+            _featureCount = int.Parse(File.ReadAllText(metadataPath));
+        }
+        else
+        {
+            // Default to DepositCounter count + 1 (for anomaly score)
+            _featureCount = FraudDetection.Core.Models.DepositCounter.TotalCounterCount + 1;
+        }
+
         _model = _mlContext.Model.Load(path, out _);
 
         if (_model == null)
@@ -208,8 +233,12 @@ public class LightGbmFraudClassifier : IFraudClassifier
             throw new InvalidDataException("Failed to load model from file.");
         }
 
-        // Create prediction engine from loaded model
-        _predictionEngine = _mlContext.Model.CreatePredictionEngine<ClassificationFeatures, FraudPredictionOutput>(_model);
+        // Create prediction engine with explicit input schema
+        var inputSchemaDefinition = SchemaDefinition.Create(typeof(ClassificationFeatures));
+        inputSchemaDefinition["Features"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, _featureCount);
+        _predictionEngine = _mlContext.Model.CreatePredictionEngine<ClassificationFeatures, FraudPredictionOutput>(
+            _model,
+            inputSchemaDefinition: inputSchemaDefinition);
 
         _isTrained = true;
     }
