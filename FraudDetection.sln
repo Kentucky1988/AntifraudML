@@ -1,0 +1,40 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FraudDetection.Core", "FraudDetection.Core\FraudDetection.Core.csproj", "{7B99CCD8-0BE3-42F5-86B5-BA80E81FCDEC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FraudDetection.Tests", "FraudDetection.Tests\FraudDetection.Tests.csproj", "{4E2C0235-1297-4A1A-8A2F-8F34358FFB90}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FraudDetection.ML", "FraudDetection.ML\FraudDetection.ML.csproj", "{ADB8CE57-52A2-43ED-8147-C84A9636B446}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FraudDetection.Demo", "FraudDetection.Demo\FraudDetection.Demo.csproj", "{C187E20C-BC40-491B-BBCC-525BEDF27742}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7B99CCD8-0BE3-42F5-86B5-BA80E81FCDEC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7B99CCD8-0BE3-42F5-86B5-BA80E81FCDEC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7B99CCD8-0BE3-42F5-86B5-BA80E81FCDEC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7B99CCD8-0BE3-42F5-86B5-BA80E81FCDEC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E2C0235-1297-4A1A-8A2F-8F34358FFB90}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E2C0235-1297-4A1A-8A2F-8F34358FFB90}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E2C0235-1297-4A1A-8A2F-8F34358FFB90}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E2C0235-1297-4A1A-8A2F-8F34358FFB90}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ADB8CE57-52A2-43ED-8147-C84A9636B446}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ADB8CE57-52A2-43ED-8147-C84A9636B446}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ADB8CE57-52A2-43ED-8147-C84A9636B446}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ADB8CE57-52A2-43ED-8147-C84A9636B446}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C187E20C-BC40-491B-BBCC-525BEDF27742}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C187E20C-BC40-491B-BBCC-525BEDF27742}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C187E20C-BC40-491B-BBCC-525BEDF27742}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C187E20C-BC40-491B-BBCC-525BEDF27742}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
