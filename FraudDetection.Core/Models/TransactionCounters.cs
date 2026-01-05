@@ -18,7 +18,7 @@ public class TransactionCounters
     /// <summary>
     /// Gets a counter value by name, returning 0 if not found or null.
     /// </summary>
-    public float GetCounter(string counterName)
+    public float GetCounterByName(string counterName)
     {
         if (RawCounters.TryGetValue(counterName, out var value) && value != null)
         {
@@ -39,12 +39,12 @@ public class TransactionCounters
     /// Extracts all counters in the order defined by DepositCounter.AllCounterNames.
     /// Missing counters default to 0.
     /// </summary>
-    public float[] ToFeatureArray()
+    public float[] ToCountersArray()
     {
         var features = new float[DepositCounter.TotalCounterCount];
         for (int i = 0; i < DepositCounter.AllCounterNames.Length; i++)
         {
-            features[i] = GetCounter(DepositCounter.AllCounterNames[i]);
+            features[i] = GetCounterByName(DepositCounter.AllCounterNames[i]);
         }
         return features;
     }

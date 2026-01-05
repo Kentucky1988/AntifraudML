@@ -72,12 +72,8 @@ public class TrainingPipeline : ITrainingPipeline
 
         try
         {
-            // Step 1: Fit feature extractor and extract features from all transactions
-            if (_featureExtractor is FeatureExtractor fe)
-            {
-                fe.Fit(data.Transactions);
-            }
-
+            // Step 1: Extract features from all transactions
+            // Note: Normalization is handled by ONNX models (sklearn Pipeline with MinMaxScaler)
             var featureVectors = _featureExtractor.ExtractBatch(data.Transactions);
             
             // Filter out null feature vectors and get corresponding labels

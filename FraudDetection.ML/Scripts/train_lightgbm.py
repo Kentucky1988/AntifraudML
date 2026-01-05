@@ -2,8 +2,8 @@ import sys
 import argparse
 import pandas as pd
 import lightgbm as lgb
-from onnxmltools.convert.common.data_types import FloatTensorType
 import onnxmltools
+from onnxmltools.convert.common.data_types import FloatTensorType
 
 
 def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate: float = 0.1, n_estimators: int = 100):

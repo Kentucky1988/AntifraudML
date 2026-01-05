@@ -57,7 +57,7 @@ trainingPipeline.SetModelPaths(IsolationForestModelPath, LightGbmModelPath);
 Console.WriteLine("   Components initialized successfully");
 Console.WriteLine();
 
-// Step 3: Train IsolationForest models
+// Step 3: Train models
 Console.WriteLine("🎓 Step 3: Training models...");
 stopwatch.Restart();
 var trainingResult = trainingPipeline.Train(trainingData);
@@ -183,7 +183,7 @@ loadedFraudClassifier.LoadModel(LightGbmModelPath);
 
 // Create new inference pipeline with loaded models
 var loadedFeatureExtractor = new FeatureExtractor();
-loadedFeatureExtractor.Fit(trainingData.Transactions); // Need to fit for normalization
+// Note: Normalization is now handled by ONNX models (sklearn Pipeline with MinMaxScaler)
 
 var loadedInferencePipeline = new InferencePipeline(loadedFeatureExtractor, loadedAnomalyDetector, loadedFraudClassifier);
 

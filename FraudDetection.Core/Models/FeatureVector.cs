@@ -15,9 +15,4 @@ public class FeatureVector
     /// Associated transaction identifier.
     /// </summary>
     public string TransactionId { get; set; } = string.Empty;
-    
-    /// <summary>
-    /// Number of features in the vector.
-    /// </summary>
-    public int FeatureCount => Features.Length;
 }
