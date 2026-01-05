@@ -13,9 +13,9 @@ Console.WriteLine();
 // Configuration
 const int TrainingDataSize = 1000;
 const int TestDataSize = 200;
-const float FraudRate = 0.15f;
-const string IsolationForestModelPath = "models/isolation_forest.json";
-const string LightGbmModelPath = "models/lightgbm.zip";
+const float FraudRate = 0.1f;
+const string IsolationForestModelPath = "models/isolation_forest.onnx";
+const string LightGbmModelPath = "models/lightgbm.onnx";
 
 // Ensure models directory exists
 Directory.CreateDirectory("models");
@@ -50,14 +50,14 @@ var lightGbmConfig = new LightGbmConfig
 };
 
 var featureExtractor = new FeatureExtractor();
-var anomalyDetector = new IsolationForestDetector(isolationForestConfig);
-var fraudClassifier = new LightGbmFraudClassifier(lightGbmConfig);
+var anomalyDetector = new OnnxIsolationForestDetector(isolationForestConfig);
+var fraudClassifier = new OnnxLightGbmClassifier(lightGbmConfig);
 var trainingPipeline = new TrainingPipeline(featureExtractor, anomalyDetector, fraudClassifier);
 trainingPipeline.SetModelPaths(IsolationForestModelPath, LightGbmModelPath);
 Console.WriteLine("   Components initialized successfully");
 Console.WriteLine();
 
-// Step 3: Train models
+// Step 3: Train IsolationForest models
 Console.WriteLine("🎓 Step 3: Training models...");
 stopwatch.Restart();
 var trainingResult = trainingPipeline.Train(trainingData);
@@ -65,7 +65,7 @@ stopwatch.Stop();
 
 if (trainingResult.Success)
 {
-    Console.WriteLine($"   Training completed successfully!");
+    Console.WriteLine($"   Training IsolationForest completed successfully!");
     Console.WriteLine($"   Time: {stopwatch.ElapsedMilliseconds}ms");
     Console.WriteLine();
     Console.WriteLine("   📈 Training Metrics:");
@@ -175,8 +175,8 @@ Console.WriteLine();
 Console.WriteLine("💾 Step 8: Model persistence demo...");
 Console.WriteLine("   Loading models from disk...");
 
-var loadedAnomalyDetector = new IsolationForestDetector(isolationForestConfig);
-var loadedFraudClassifier = new LightGbmFraudClassifier(lightGbmConfig);
+var loadedAnomalyDetector = new OnnxIsolationForestDetector(isolationForestConfig);
+var loadedFraudClassifier = new OnnxLightGbmClassifier(lightGbmConfig);
 
 loadedAnomalyDetector.LoadModel(IsolationForestModelPath);
 loadedFraudClassifier.LoadModel(LightGbmModelPath);

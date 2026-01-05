@@ -50,7 +50,7 @@ public class TrainingPipeline : ITrainingPipeline
     /// Step 3: Generate anomaly scores for training data
     /// Step 4: Train LightGBM with combined features (FeatureVector + AnomalyScore)
     /// </summary>
-    /// <param name="data">Training data with transactions and fraud labels.</param>
+    /// <param name="data">Training data with labeled transactions.</param>
     /// <returns>Training result with metrics and model paths.</returns>
     public TrainingResult Train(TrainingData data)
     {
@@ -64,14 +64,10 @@ public class TrainingPipeline : ITrainingPipeline
             throw new ArgumentException("Training data must contain transactions.", nameof(data));
         }
 
-        if (data.FraudLabels == null || data.FraudLabels.Length == 0)
+        // Validate all transactions have labels
+        if (data.Transactions.Any(t => t.IsFraud == null))
         {
-            throw new ArgumentException("Training data must contain fraud labels.", nameof(data));
-        }
-
-        if (data.Transactions.Length != data.FraudLabels.Length)
-        {
-            throw new ArgumentException("Transactions and fraud labels must have the same length.");
+            throw new ArgumentException("All transactions must have IsFraud label for training.", nameof(data));
         }
 
         try
@@ -90,7 +86,7 @@ public class TrainingPipeline : ITrainingPipeline
             {
                 if (featureVectors[i] != null)
                 {
-                    validData.Add((featureVectors[i]!, data.FraudLabels[i]));
+                    validData.Add((featureVectors[i]!, data.Transactions[i].IsFraud!.Value));
                 }
             }
 
@@ -137,8 +133,10 @@ public class TrainingPipeline : ITrainingPipeline
                 LightGbmModelPath = _lightGbmModelPath
             };
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.WriteLine($"Training pipeline error: {ex.GetType().Name}: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
             return new TrainingResult
             {
                 Success = false,
@@ -152,7 +150,7 @@ public class TrainingPipeline : ITrainingPipeline
     /// <summary>
     /// Evaluates the trained models on test data.
     /// </summary>
-    /// <param name="testData">Test data with transactions and fraud labels.</param>
+    /// <param name="testData">Test data with labeled transactions.</param>
     /// <returns>Model performance metrics.</returns>
     public ModelMetrics Evaluate(TrainingData testData)
     {
@@ -166,9 +164,9 @@ public class TrainingPipeline : ITrainingPipeline
             throw new ArgumentException("Test data must contain transactions.", nameof(testData));
         }
 
-        if (testData.FraudLabels == null || testData.FraudLabels.Length == 0)
+        if (testData.Transactions.Any(t => t.IsFraud == null))
         {
-            throw new ArgumentException("Test data must contain fraud labels.", nameof(testData));
+            throw new ArgumentException("All transactions must have IsFraud label for evaluation.", nameof(testData));
         }
 
         // Extract features
@@ -180,7 +178,7 @@ public class TrainingPipeline : ITrainingPipeline
         {
             if (featureVectors[i] != null)
             {
-                validData.Add((featureVectors[i]!, testData.FraudLabels[i]));
+                validData.Add((featureVectors[i]!, testData.Transactions[i].IsFraud!.Value));
             }
         }
 

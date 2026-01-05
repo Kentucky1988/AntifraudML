@@ -26,6 +26,11 @@ public class Transaction
     public string UserId { get; set; } = string.Empty;
     
     /// <summary>
+    /// Fraud label for training. Null for inference.
+    /// </summary>
+    public bool? IsFraud { get; set; }
+    
+    /// <summary>
     /// All counters for fraud analysis (loaded from PostgreSQL JSON).
     /// </summary>
     public TransactionCounters Counters { get; set; } = new();

@@ -15,28 +15,34 @@ public static class SampleDataGenerator
     /// </summary>
     /// <param name="count">Number of transactions to generate.</param>
     /// <param name="fraudRate">Percentage of fraudulent transactions (0.0 to 1.0).</param>
-    /// <returns>Training data with transactions and labels.</returns>
+    /// <returns>Training data with labeled transactions.</returns>
     public static TrainingData GenerateTrainingData(int count, float fraudRate = 0.1f)
     {
         var transactions = new Transaction[count];
-        var labels = new bool[count];
         int fraudCount = (int)(count * fraudRate);
 
         for (int i = 0; i < count; i++)
         {
             bool isFraud = i < fraudCount;
             transactions[i] = GenerateTransaction($"TX-{i:D6}", isFraud);
-            labels[i] = isFraud;
         }
 
-        // Shuffle to mix fraud and legitimate transactions
-        ShuffleData(transactions, labels);
+        // Shuffle transactions
+        ShuffleTransactions(transactions);
 
         return new TrainingData
         {
-            Transactions = transactions,
-            FraudLabels = labels
+            Transactions = transactions
         };
+    }
+
+    private static void ShuffleTransactions(Transaction[] transactions)
+    {
+        for (int i = transactions.Length - 1; i > 0; i--)
+        {
+            int j = _random.Next(i + 1);
+            (transactions[i], transactions[j]) = (transactions[j], transactions[i]);
+        }
     }
 
     /// <summary>
@@ -47,29 +53,21 @@ public static class SampleDataGenerator
     /// <returns>Generated transaction.</returns>
     public static Transaction GenerateTransaction(string transactionId, bool isFraud)
     {
-        var counters = new TransactionCounters();
-
-        if (isFraud)
-        {
-            GenerateFraudCounters(counters);
-        }
-        else
-        {
-            GenerateLegitimateCounters(counters);
-        }
-
         return new Transaction
         {
             TransactionId = transactionId,
+            UserId = $"USER-{_random.Next(1000, 9999)}",
             Timestamp = DateTime.UtcNow.AddMinutes(-_random.Next(0, 10080)), // Last 7 days
             Amount = isFraud ? GenerateFraudAmount() : GenerateLegitimateAmount(),
-            UserId = $"USER-{_random.Next(1000, 9999)}",
-            Counters = counters
+            IsFraud = isFraud,
+            Counters = isFraud ? GenerateFraudCounters() : GenerateLegitimateCounters()
         };
     }
 
-    private static void GenerateLegitimateCounters(TransactionCounters counters)
+    private static TransactionCounters GenerateLegitimateCounters()
     {
+        var counters = new TransactionCounters();
+        
         // Phone counters - low values for legitimate users
         counters.SetCounter(DepositCounter.CountIpCountriesPhone1d, _random.Next(1, 3));
         counters.SetCounter(DepositCounter.CountIpCountriesPhone7d, _random.Next(1, 4));
@@ -223,11 +221,15 @@ public static class SampleDataGenerator
         SetLegitimateEmailCounters(counters);
         SetLegitimateCardCounters(counters);
         SetLegitimateUserIpCounters(counters);
+
+        return counters;
     }
 
 
-    private static void GenerateFraudCounters(TransactionCounters counters)
+    private static TransactionCounters GenerateFraudCounters()
     {
+        var counters = new TransactionCounters();
+        
         // Phone counters - high values indicating multiple identities
         counters.SetCounter(DepositCounter.CountIpCountriesPhone1d, _random.Next(3, 10));
         counters.SetCounter(DepositCounter.CountIpCountriesPhone7d, _random.Next(5, 15));
@@ -381,6 +383,8 @@ public static class SampleDataGenerator
         SetFraudEmailCounters(counters);
         SetFraudCardCounters(counters);
         SetFraudUserIpCounters(counters);
+        
+        return counters;
     }
 
 
@@ -545,17 +549,6 @@ public static class SampleDataGenerator
         {
             // Large amounts
             return Math.Round((decimal)(_random.NextDouble() * 5000 + 1000), 2);
-        }
-    }
-
-    private static void ShuffleData(Transaction[] transactions, bool[] labels)
-    {
-        int n = transactions.Length;
-        for (int i = n - 1; i > 0; i--)
-        {
-            int j = _random.Next(i + 1);
-            (transactions[i], transactions[j]) = (transactions[j], transactions[i]);
-            (labels[i], labels[j]) = (labels[j], labels[i]);
         }
     }
 }

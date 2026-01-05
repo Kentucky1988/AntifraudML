@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/.git/
+**/.idea/
+**/.vs/
+**/node_modules/
+*.user
+*.suo
+.DS_Store
+models/*.json
+models/*.zip
+models/*.onnx
