@@ -9,8 +9,11 @@ public interface IFraudClassifier
 {
     /// <summary>
     /// Trains the classifier on labeled data.
+    /// Features array contains combined feature vectors (original features + anomaly score).
     /// </summary>
-    void Train(ClassificationInput[] trainingData, bool[] labels);
+    /// <param name="features">Pre-combined feature arrays (features + anomaly score as last element).</param>
+    /// <param name="labels">Fraud labels (true = fraud).</param>
+    void Train(float[][] features, bool[] labels);
     
     /// <summary>
     /// Predicts fraud for a single input.

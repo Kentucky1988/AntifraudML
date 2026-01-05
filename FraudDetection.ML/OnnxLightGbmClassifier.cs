@@ -23,6 +23,12 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
     private int _featureCount;
     private bool _disposed;
 
+    /// <summary>
+    /// Creates a new OnnxLightGbmClassifier with the specified configuration.
+    /// </summary>
+    /// <param name="config">LightGBM configuration parameters.</param>
+    /// <param name="pythonPath">Path to Python executable. If null, uses PYTHON_PATH env var or "python".</param>
+    /// <param name="scriptPath">Path to training script.</param>
     public OnnxLightGbmClassifier(
         LightGbmConfig? config = null,
         string? pythonPath = null,
@@ -33,46 +39,40 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         _scriptPath = scriptPath ?? GetDefaultScriptPath();
     }
 
+    /// <summary>
+    /// Gets whether the model has been loaded and is ready for inference.
+    /// </summary>
     public bool IsTrained => _session != null;
 
-    public void Train(ClassificationInput[] trainingData, bool[] labels)
+    /// <summary>
+    /// Trains the classifier on labeled data.
+    /// </summary>
+    /// <param name="features">Pre-combined feature arrays (features + anomaly score as last element).</param>
+    /// <param name="labels">Fraud labels (true = fraud).</param>
+    public void Train(float[][] features, bool[] labels)
     {
-        TrainAsync(trainingData, labels).GetAwaiter().GetResult();
+        TrainAsync(features, labels).GetAwaiter().GetResult();
     }
 
-    public async Task TrainAsync(ClassificationInput[] trainingData, bool[] labels)
+    /// <summary>
+    /// Asynchronously trains the classifier using Python LightGBM.
+    /// </summary>
+    public async Task TrainAsync(float[][] features, bool[] labels)
     {
-        if (trainingData == null || trainingData.Length == 0)
-            throw new ArgumentException("Training data cannot be null or empty.", nameof(trainingData));
+        if (features == null || features.Length == 0)
+            throw new ArgumentException("Features cannot be null or empty.", nameof(features));
 
-        if (labels == null || labels.Length != trainingData.Length)
-            throw new ArgumentException("Labels must match training data length.", nameof(labels));
+        if (labels == null || labels.Length != features.Length)
+            throw new ArgumentException("Labels must match features length.", nameof(labels));
 
-        var validData = new List<(float[] Features, bool Label)>();
-        for (int i = 0; i < trainingData.Length; i++)
-        {
-            var input = trainingData[i];
-            if (input?.Features?.Features != null && input.Features.Features.Length > 0)
-            {
-                // Combine features with anomaly score
-                var combined = new float[input.Features.Features.Length + 1];
-                Array.Copy(input.Features.Features, combined, input.Features.Features.Length);
-                combined[^1] = input.AnomalyScore;
-                validData.Add((combined, labels[i]));
-            }
-        }
-
-        if (validData.Count == 0)
-            throw new ArgumentException("No valid training data.", nameof(trainingData));
-
-        _featureCount = validData[0].Features.Length;
+        _featureCount = features[0].Length;
 
         string tempCsv = Path.Combine(Path.GetTempPath(), $"lightgbm_train_{Guid.NewGuid()}.csv");
         string tempOnnx = Path.Combine(Path.GetTempPath(), $"lightgbm_{Guid.NewGuid()}.onnx");
 
         try
         {
-            await ExportToCsvAsync(validData, tempCsv);
+            await ExportToCsvAsync(features, labels, tempCsv);
             
             bool success = await RunTrainingAsync(tempCsv, tempOnnx);
             if (!success)
@@ -87,23 +87,46 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         }
     }
 
-    private static async Task ExportToCsvAsync(List<(float[] Features, bool Label)> data, string csvPath)
+    /// <summary>
+    /// Exports training data to CSV format for Python training.
+    /// Optimized for large datasets - writes directly without intermediate collections.
+    /// </summary>
+    private static async Task ExportToCsvAsync(float[][] features, bool[] labels, string csvPath)
     {
-        var sb = new StringBuilder();
+        using var writer = new StreamWriter(csvPath, false, Encoding.UTF8, bufferSize: 65536);
         
-        int featureCount = data[0].Features.Length;
-        var headers = Enumerable.Range(0, featureCount).Select(i => $"f{i}").Append("label");
-        sb.AppendLine(string.Join(",", headers));
-
-        foreach (var (features, label) in data)
+        // Header
+        int featureCount = features[0].Length;
+        var header = new StringBuilder();
+        for (int i = 0; i < featureCount; i++)
         {
-            var values = features.Select(f => f.ToString(CultureInfo.InvariantCulture)).Append(label ? "1" : "0");
-            sb.AppendLine(string.Join(",", values));
+            if (i > 0) header.Append(',');
+            header.Append('f').Append(i);
         }
+        header.Append(",label");
+        await writer.WriteLineAsync(header.ToString());
 
-        await File.WriteAllTextAsync(csvPath, sb.ToString());
+        // Data rows - write directly without StringBuilder per row for large datasets
+        var rowBuffer = new StringBuilder();
+        for (int row = 0; row < features.Length; row++)
+        {
+            rowBuffer.Clear();
+            var rowFeatures = features[row];
+            
+            for (int i = 0; i < rowFeatures.Length; i++)
+            {
+                if (i > 0) rowBuffer.Append(',');
+                rowBuffer.Append(rowFeatures[i].ToString(CultureInfo.InvariantCulture));
+            }
+            rowBuffer.Append(',').Append(labels[row] ? '1' : '0');
+            
+            await writer.WriteLineAsync(rowBuffer.ToString());
+        }
     }
 
+    /// <summary>
+    /// Runs the Python training script using CliWrap.
+    /// </summary>
     private async Task<bool> RunTrainingAsync(string inputCsv, string outputOnnx)
     {
         Console.WriteLine("Starting Python LightGBM training...");
@@ -141,6 +164,9 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         }
     }
 
+    /// <summary>
+    /// Predicts fraud for a single input.
+    /// </summary>
     public FraudPrediction Predict(ClassificationInput input)
     {
         if (_session == null)
@@ -173,11 +199,11 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         };
     }
 
+    /// <summary>
+    /// Extracts prediction from ONNX model output.
+    /// </summary>
     private static (bool IsFraud, float Probability) GetPrediction(IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results)
     {
-        // LightGBM ONNX outputs: label (TENSOR) and probabilities (SEQUENCE)
-        
-        // Try label output first (more reliable)
         var labelOutput = results.FirstOrDefault(r => r.Name == "label");
         if (labelOutput != null)
         {
@@ -196,12 +222,24 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         return (false, 0f);
     }
 
+    /// <summary>
+    /// Predicts fraud for multiple inputs.
+    /// </summary>
     public FraudPrediction[] PredictBatch(ClassificationInput[] inputs)
     {
         if (inputs == null) return Array.Empty<FraudPrediction>();
-        return inputs.Select(Predict).ToArray();
+        
+        var results = new FraudPrediction[inputs.Length];
+        for (int i = 0; i < inputs.Length; i++)
+        {
+            results[i] = Predict(inputs[i]);
+        }
+        return results;
     }
 
+    /// <summary>
+    /// Saves the trained model to disk.
+    /// </summary>
     public void SaveModel(string path)
     {
         if (_session == null || _modelBytes == null)
@@ -215,6 +253,9 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         File.WriteAllText(path + ".meta", _featureCount.ToString());
     }
 
+    /// <summary>
+    /// Loads a trained model from disk.
+    /// </summary>
     public void LoadModel(string path)
     {
         if (!File.Exists(path))
@@ -229,6 +270,9 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
             _featureCount = int.Parse(File.ReadAllText(metaPath));
     }
 
+    /// <summary>
+    /// Gets the default path to the training script.
+    /// </summary>
     private static string GetDefaultScriptPath()
     {
         var assemblyDir = Path.GetDirectoryName(typeof(OnnxLightGbmClassifier).Assembly.Location);
@@ -241,6 +285,9 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         return "Scripts/train_lightgbm.py";
     }
 
+    /// <summary>
+    /// Disposes the ONNX inference session.
+    /// </summary>
     public void Dispose()
     {
         if (!_disposed)

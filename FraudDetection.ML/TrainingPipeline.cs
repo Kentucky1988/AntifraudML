@@ -5,7 +5,7 @@ namespace FraudDetection.ML;
 
 /// <summary>
 /// Training pipeline that orchestrates the training of both Isolation Forest
-/// and LightGBM models in sequence.
+/// and LightGBM models in sequence. Optimized for large datasets (200k+ records).
 /// </summary>
 public class TrainingPipeline : ITrainingPipeline
 {
@@ -13,8 +13,8 @@ public class TrainingPipeline : ITrainingPipeline
     private readonly IAnomalyDetector _anomalyDetector;
     private readonly IFraudClassifier _fraudClassifier;
     
-    private string _isolationForestModelPath = "isolation_forest.json";
-    private string _lightGbmModelPath = "lightgbm.zip";
+    private string _isolationForestModelPath = "isolation_forest.onnx";
+    private string _lightGbmModelPath = "lightgbm.onnx";
 
     /// <summary>
     /// Creates a new TrainingPipeline with the specified components.
@@ -45,81 +45,97 @@ public class TrainingPipeline : ITrainingPipeline
 
     /// <summary>
     /// Trains both models on the provided data.
-    /// Step 1: Extract features from all transactions
-    /// Step 2: Train Isolation Forest on feature vectors
-    /// Step 3: Generate anomaly scores for training data
-    /// Step 4: Train LightGBM with combined features (FeatureVector + AnomalyScore)
+    /// Optimized for 200k+ records with minimal allocations.
+    /// 
+    /// Pipeline steps:
+    /// 1. Extract features from all transactions (single pass)
+    /// 2. Train Isolation Forest on feature vectors
+    /// 3. Generate anomaly scores for training data
+    /// 4. Train LightGBM with combined features (FeatureVector + AnomalyScore)
+    /// 5. Save models to disk
+    /// 6. Calculate training metrics
     /// </summary>
     /// <param name="data">Training data with labeled transactions.</param>
     /// <returns>Training result with metrics and model paths.</returns>
     public TrainingResult Train(TrainingData data)
     {
-        if (data == null)
-        {
-            throw new ArgumentNullException(nameof(data));
-        }
-
-        if (data.Transactions == null || data.Transactions.Length == 0)
-        {
+        if (data?.Transactions == null || data.Transactions.Length == 0)
             throw new ArgumentException("Training data must contain transactions.", nameof(data));
-        }
-
-        // Validate all transactions have labels
-        if (data.Transactions.Any(t => t.IsFraud == null))
-        {
-            throw new ArgumentException("All transactions must have IsFraud label for training.", nameof(data));
-        }
 
         try
         {
-            // Step 1: Extract features from all transactions
-            // Note: Normalization is handled by ONNX models (sklearn Pipeline with MinMaxScaler)
-            var featureVectors = _featureExtractor.ExtractBatch(data.Transactions);
-            
-            // Filter out null feature vectors and get corresponding labels
-            var validData = new List<(FeatureVector Features, bool Label)>();
-            for (int i = 0; i < featureVectors.Length; i++)
+            var transactions = data.Transactions;
+            int count = transactions.Length;
+
+            // Pre-allocate arrays to avoid List resizing for large datasets
+            var featureVectors = new FeatureVector[count];
+            var labels = new bool[count];
+            int validCount = 0;
+
+            // Single pass: extract features and labels
+            for (int i = 0; i < count; i++)
             {
-                if (featureVectors[i] != null)
+                var t = transactions[i];
+                if (t.IsFraud == null)
+                    throw new ArgumentException($"Transaction at index {i} missing IsFraud label.", nameof(data));
+
+                var fv = _featureExtractor.Extract(t);
+                if (fv != null)
                 {
-                    validData.Add((featureVectors[i]!, data.Transactions[i].IsFraud!.Value));
+                    featureVectors[validCount] = fv;
+                    labels[validCount] = t.IsFraud.Value;
+                    validCount++;
                 }
             }
 
-            if (validData.Count == 0)
-            {
+            if (validCount == 0)
                 throw new InvalidOperationException("No valid feature vectors extracted from training data.");
+
+            // Resize only if there were invalid entries (rare case)
+            if (validCount < count)
+            {
+                Array.Resize(ref featureVectors, validCount);
+                Array.Resize(ref labels, validCount);
             }
 
-            var validFeatures = validData.Select(d => d.Features).ToArray();
-            var validLabels = validData.Select(d => d.Label).ToArray();
+            // Step 1: Train Isolation Forest on feature vectors
+            _anomalyDetector.Train(featureVectors);
 
-            // Step 2: Train Isolation Forest on feature vectors
-            _anomalyDetector.Train(validFeatures);
+            // Step 2: Generate anomaly scores for training data
+            var anomalyResults = _anomalyDetector.PredictBatch(featureVectors);
 
-            // Step 3: Generate anomaly scores for training data
-            var anomalyResults = _anomalyDetector.PredictBatch(validFeatures);
+            // Step 3: Combine features + anomaly score into single array for LightGBM
+            int featureLength = featureVectors[0].Features.Length;
+            var combinedFeatures = new float[validCount][];
+            
+            for (int i = 0; i < validCount; i++)
+            {
+                var combined = new float[featureLength + 1];
+                Array.Copy(featureVectors[i].Features, combined, featureLength);
+                combined[featureLength] = anomalyResults[i].AnomalyScore;
+                combinedFeatures[i] = combined;
+            }
 
-            // Step 4: Create classification inputs (FeatureVector + AnomalyScore)
-            var classificationInputs = new ClassificationInput[validFeatures.Length];
-            for (int i = 0; i < validFeatures.Length; i++)
+            // Step 4: Train LightGBM with combined features
+            _fraudClassifier.Train(combinedFeatures, labels);
+
+            // Step 5: Save both models to disk
+            _anomalyDetector.SaveModel(_isolationForestModelPath);
+            _fraudClassifier.SaveModel(_lightGbmModelPath);
+
+            // Step 6: Build ClassificationInputs for metrics calculation (needed for Predict interface)
+            var classificationInputs = new ClassificationInput[validCount];
+            for (int i = 0; i < validCount; i++)
             {
                 classificationInputs[i] = new ClassificationInput
                 {
-                    Features = validFeatures[i],
+                    Features = featureVectors[i],
                     AnomalyScore = anomalyResults[i].AnomalyScore
                 };
             }
 
-            // Step 5: Train LightGBM with combined features
-            _fraudClassifier.Train(classificationInputs, validLabels);
-
-            // Step 6: Save both models to disk
-            _anomalyDetector.SaveModel(_isolationForestModelPath);
-            _fraudClassifier.SaveModel(_lightGbmModelPath);
-
             // Step 7: Calculate metrics on training data
-            var metrics = CalculateMetrics(classificationInputs, validLabels);
+            var metrics = CalculateMetrics(classificationInputs, labels);
 
             return new TrainingResult
             {
@@ -132,7 +148,6 @@ public class TrainingPipeline : ITrainingPipeline
         catch (Exception ex)
         {
             Console.WriteLine($"Training pipeline error: {ex.GetType().Name}: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
             return new TrainingResult
             {
                 Success = false,
@@ -150,147 +165,135 @@ public class TrainingPipeline : ITrainingPipeline
     /// <returns>Model performance metrics.</returns>
     public ModelMetrics Evaluate(TrainingData testData)
     {
-        if (testData == null)
-        {
-            throw new ArgumentNullException(nameof(testData));
-        }
-
-        if (testData.Transactions == null || testData.Transactions.Length == 0)
-        {
+        if (testData?.Transactions == null || testData.Transactions.Length == 0)
             throw new ArgumentException("Test data must contain transactions.", nameof(testData));
-        }
 
-        if (testData.Transactions.Any(t => t.IsFraud == null))
-        {
-            throw new ArgumentException("All transactions must have IsFraud label for evaluation.", nameof(testData));
-        }
+        var transactions = testData.Transactions;
+        int count = transactions.Length;
 
-        // Extract features
-        var featureVectors = _featureExtractor.ExtractBatch(testData.Transactions);
-        
-        // Filter valid data
-        var validData = new List<(FeatureVector Features, bool Label)>();
-        for (int i = 0; i < featureVectors.Length; i++)
+        // Pre-allocate arrays
+        var featureVectors = new FeatureVector[count];
+        var labels = new bool[count];
+        int validCount = 0;
+
+        // Single pass extraction
+        for (int i = 0; i < count; i++)
         {
-            if (featureVectors[i] != null)
+            var t = transactions[i];
+            if (t.IsFraud == null) continue;
+
+            var fv = _featureExtractor.Extract(t);
+            if (fv != null)
             {
-                validData.Add((featureVectors[i]!, testData.Transactions[i].IsFraud!.Value));
+                featureVectors[validCount] = fv;
+                labels[validCount] = t.IsFraud.Value;
+                validCount++;
             }
         }
 
-        if (validData.Count == 0)
-        {
+        if (validCount == 0)
             return new ModelMetrics();
+
+        // Resize only if needed
+        if (validCount < count)
+        {
+            Array.Resize(ref featureVectors, validCount);
+            Array.Resize(ref labels, validCount);
         }
 
-        var validFeatures = validData.Select(d => d.Features).ToArray();
-        var validLabels = validData.Select(d => d.Label).ToArray();
-
         // Get anomaly scores
-        var anomalyResults = _anomalyDetector.PredictBatch(validFeatures);
+        var anomalyResults = _anomalyDetector.PredictBatch(featureVectors);
 
-        // Create classification inputs
-        var classificationInputs = new ClassificationInput[validFeatures.Length];
-        for (int i = 0; i < validFeatures.Length; i++)
+        // Create classification inputs for Predict interface
+        var classificationInputs = new ClassificationInput[validCount];
+        for (int i = 0; i < validCount; i++)
         {
             classificationInputs[i] = new ClassificationInput
             {
-                Features = validFeatures[i],
+                Features = featureVectors[i],
                 AnomalyScore = anomalyResults[i].AnomalyScore
             };
         }
 
-        return CalculateMetrics(classificationInputs, validLabels);
+        return CalculateMetrics(classificationInputs, labels);
     }
 
-
     /// <summary>
-    /// Calculates model performance metrics.
+    /// Calculates model performance metrics (Accuracy, Precision, Recall, F1, AUC-ROC).
+    /// Uses pre-allocated arrays to minimize GC pressure for large datasets.
     /// </summary>
     private ModelMetrics CalculateMetrics(ClassificationInput[] inputs, bool[] actualLabels)
     {
         var predictions = _fraudClassifier.PredictBatch(inputs);
+        int count = predictions.Length;
 
-        int truePositives = 0;
-        int trueNegatives = 0;
-        int falsePositives = 0;
-        int falseNegatives = 0;
+        int tp = 0, tn = 0, fp = 0, fn = 0;
 
-        var confidenceScores = new List<(float Score, bool ActualLabel)>();
+        // Pre-allocate array for AUC calculation (avoid List dynamic resizing)
+        var scores = new (float Score, bool Label)[count];
 
-        for (int i = 0; i < predictions.Length; i++)
+        for (int i = 0; i < count; i++)
         {
             bool predicted = predictions[i].IsFraudTransaction;
             bool actual = actualLabels[i];
+            
+            scores[i] = (predictions[i].ConfidenceScore, actual);
 
-            confidenceScores.Add((predictions[i].ConfidenceScore, actual));
-
-            if (predicted && actual)
-                truePositives++;
-            else if (!predicted && !actual)
-                trueNegatives++;
-            else if (predicted && !actual)
-                falsePositives++;
-            else
-                falseNegatives++;
+            if (predicted && actual) tp++;
+            else if (!predicted && !actual) tn++;
+            else if (predicted) fp++;
+            else fn++;
         }
 
-        int total = predictions.Length;
-        double accuracy = total > 0 ? (double)(truePositives + trueNegatives) / total : 0;
-        double precision = (truePositives + falsePositives) > 0 
-            ? (double)truePositives / (truePositives + falsePositives) : 0;
-        double recall = (truePositives + falseNegatives) > 0 
-            ? (double)truePositives / (truePositives + falseNegatives) : 0;
-        double f1Score = (precision + recall) > 0 
-            ? 2 * (precision * recall) / (precision + recall) : 0;
-        double aucRoc = CalculateAucRoc(confidenceScores);
+        double accuracy = count > 0 ? (double)(tp + tn) / count : 0;
+        double precision = (tp + fp) > 0 ? (double)tp / (tp + fp) : 0;
+        double recall = (tp + fn) > 0 ? (double)tp / (tp + fn) : 0;
+        double f1 = (precision + recall) > 0 ? 2 * precision * recall / (precision + recall) : 0;
 
         return new ModelMetrics
         {
             Accuracy = accuracy,
             Precision = precision,
             Recall = recall,
-            F1Score = f1Score,
-            AucRoc = aucRoc
+            F1Score = f1,
+            AucRoc = CalculateAucRoc(scores)
         };
     }
 
     /// <summary>
     /// Calculates AUC-ROC using the trapezoidal rule.
+    /// Uses Span for in-place sorting to avoid additional allocations.
     /// </summary>
-    private static double CalculateAucRoc(List<(float Score, bool ActualLabel)> predictions)
+    private static double CalculateAucRoc(Span<(float Score, bool Label)> predictions)
     {
-        if (predictions.Count == 0)
-            return 0;
+        if (predictions.Length == 0) return 0;
 
-        // Sort by score descending
-        var sorted = predictions.OrderByDescending(p => p.Score).ToList();
+        // Sort in-place by score descending (no additional allocation)
+        predictions.Sort((a, b) => b.Score.CompareTo(a.Score));
 
-        int totalPositives = sorted.Count(p => p.ActualLabel);
-        int totalNegatives = sorted.Count - totalPositives;
+        int totalPos = 0, totalNeg = 0;
+        foreach (var p in predictions)
+        {
+            if (p.Label) totalPos++;
+            else totalNeg++;
+        }
 
-        if (totalPositives == 0 || totalNegatives == 0)
-            return 0.5; // No discrimination possible
+        if (totalPos == 0 || totalNeg == 0) return 0.5;
 
         double auc = 0;
-        int tp = 0;
-        int fp = 0;
-        double prevTpr = 0;
-        double prevFpr = 0;
+        int tp = 0, fp = 0;
+        double prevTpr = 0, prevFpr = 0;
 
-        foreach (var (score, actualLabel) in sorted)
+        foreach (var (_, label) in predictions)
         {
-            if (actualLabel)
-                tp++;
-            else
-                fp++;
+            if (label) tp++;
+            else fp++;
 
-            double tpr = (double)tp / totalPositives;
-            double fpr = (double)fp / totalNegatives;
+            double tpr = (double)tp / totalPos;
+            double fpr = (double)fp / totalNeg;
 
             // Trapezoidal rule
             auc += (fpr - prevFpr) * (tpr + prevTpr) / 2;
-
             prevTpr = tpr;
             prevFpr = fpr;
         }
