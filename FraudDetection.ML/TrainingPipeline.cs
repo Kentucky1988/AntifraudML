@@ -219,7 +219,7 @@ public class TrainingPipeline : ITrainingPipeline
     }
 
     /// <summary>
-    /// Calculates model performance metrics (Accuracy, Precision, Recall, F1, AUC-ROC).
+    /// Calculates model performance metrics (Accuracy, Precision, Recall, F1, F2, AUC-ROC, AUC-PR).
     /// Uses pre-allocated arrays to minimize GC pressure for large datasets.
     /// </summary>
     private ModelMetrics CalculateMetrics(ClassificationInput[] inputs, bool[] actualLabels)
@@ -249,6 +249,13 @@ public class TrainingPipeline : ITrainingPipeline
         double precision = (tp + fp) > 0 ? (double)tp / (tp + fp) : 0;
         double recall = (tp + fn) > 0 ? (double)tp / (tp + fn) : 0;
         double f1 = (precision + recall) > 0 ? 2 * precision * recall / (precision + recall) : 0;
+        
+        // F2 Score: weights Recall higher than Precision (beta=2)
+        // Formula: (1 + beta^2) * (P * R) / (beta^2 * P + R) where beta=2
+        double f2 = (precision + recall) > 0 ? 5 * precision * recall / (4 * precision + recall) : 0;
+
+        // Calculate both AUC metrics
+        var (aucRoc, aucPr) = CalculateAucMetrics(scores);
 
         return new ModelMetrics
         {
@@ -256,17 +263,19 @@ public class TrainingPipeline : ITrainingPipeline
             Precision = precision,
             Recall = recall,
             F1Score = f1,
-            AucRoc = CalculateAucRoc(scores)
+            F2Score = f2,
+            AucRoc = aucRoc,
+            AucPr = aucPr
         };
     }
 
     /// <summary>
-    /// Calculates AUC-ROC using the trapezoidal rule.
+    /// Calculates both AUC-ROC and AUC-PR using the trapezoidal rule.
     /// Uses Span for in-place sorting to avoid additional allocations.
     /// </summary>
-    private static double CalculateAucRoc(Span<(float Score, bool Label)> predictions)
+    private static (double AucRoc, double AucPr) CalculateAucMetrics(Span<(float Score, bool Label)> predictions)
     {
-        if (predictions.Length == 0) return 0;
+        if (predictions.Length == 0) return (0, 0);
 
         // Sort in-place by score descending (no additional allocation)
         predictions.Sort((a, b) => b.Score.CompareTo(a.Score));
@@ -278,26 +287,35 @@ public class TrainingPipeline : ITrainingPipeline
             else totalNeg++;
         }
 
-        if (totalPos == 0 || totalNeg == 0) return 0.5;
+        if (totalPos == 0 || totalNeg == 0) return (0.5, 0);
 
-        double auc = 0;
+        double aucRoc = 0;
+        double aucPr = 0;
         int tp = 0, fp = 0;
         double prevTpr = 0, prevFpr = 0;
+        double prevRecall = 0, prevPrecision = 1;
 
         foreach (var (_, label) in predictions)
         {
             if (label) tp++;
             else fp++;
 
-            double tpr = (double)tp / totalPos;
+            double tpr = (double)tp / totalPos;  // Recall
             double fpr = (double)fp / totalNeg;
+            double precision = (tp + fp) > 0 ? (double)tp / (tp + fp) : 1;
 
-            // Trapezoidal rule
-            auc += (fpr - prevFpr) * (tpr + prevTpr) / 2;
+            // AUC-ROC: Trapezoidal rule on ROC curve
+            aucRoc += (fpr - prevFpr) * (tpr + prevTpr) / 2;
+
+            // AUC-PR: Trapezoidal rule on Precision-Recall curve
+            aucPr += (tpr - prevRecall) * (precision + prevPrecision) / 2;
+
             prevTpr = tpr;
             prevFpr = fpr;
+            prevRecall = tpr;
+            prevPrecision = precision;
         }
 
-        return auc;
+        return (aucRoc, aucPr);
     }
 }
