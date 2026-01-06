@@ -1,0 +1,81 @@
+{
+  "description": "Features used for fraud detection model. Only these counters will be included in training and inference.",
+  "version": "1.0",
+  "features": [
+    "count_ipCountries_phone_1d",
+    "count_ipCountries_phone_7d",
+    "count_devices_phone_1d",
+    "count_devices_phone_7d",
+    "count_cards_phone_1d",
+    "count_cards_phone_7d",
+    
+    "count_fails_trans_user_1h",
+    "count_fails_trans_user_1h_in_row",
+    "count_cards_user_1d",
+    "count_cards_user_7d",
+    "count_cards_user_30d",
+    "count_deviceFingerprints_user_1d",
+    "count_deviceFingerprints_user_7d",
+    "count_phones_user_1d",
+    "count_phones_user_7d",
+    
+    "count_ip_user_1d",
+    "count_ip_user_7d",
+    "count_ipCountries_user_1d",
+    "count_ipCountries_user_7d",
+    "count_emails_user_1d",
+    "count_emails_user_7d",
+    
+    "average_seconds_between_transactions_user_10m",
+    "average_seconds_between_transactions_user_30m",
+    "average_seconds_between_transactions_user_1h",
+    
+    "average_amount_all_deposits_user_eur_1d",
+    "average_amount_all_deposits_user_eur_7d",
+    "average_amount_all_success_deposits_eur_user_1d",
+    "average_amount_all_success_deposits_eur_user_7d",
+    
+    "count_transactions_user_1h",
+    "count_success_payments_user_1d",
+    "count_success_payments_user_7d",
+    "count_success_payments_user_30d",
+    
+    "count_success_to_fail_transactions_ratio_user_1h",
+    "count_success_to_fail_transactions_ratio_user_1d",
+    
+    "count_unique_payment_methods_user_1h",
+    "count_unique_payment_methods_user_1d",
+    
+    "count_time_since_last_deposit_in_seconds_user",
+    "count_amount_deviation_ratio_from_user_avg_user",
+    
+    "sum_success_deposits_card_1d",
+    "sum_success_deposits_card_7d",
+    
+    "is_transaction_country_mismatch",
+    "hour_of_day",
+    "day_of_week",
+    
+    "count_antifraud_declines_user_1h",
+    "count_antifraud_declines_user_1d",
+    "count_antifraud_declines_user_7d",
+    
+    "count_cards_doc_1d",
+    "count_cards_doc_7d",
+    
+    "count_devices_ip_1d",
+    "count_devices_ip_7d",
+    "count_cards_ip_1d",
+    "count_cards_ip_7d",
+    "count_users_ip_1d",
+    "count_users_ip_7d",
+    
+    "count_devices_email_1d",
+    "count_cards_email_1d",
+    
+    "count_users_card_1d",
+    "count_users_card_7d",
+    "count_success_dep_user_card_30d",
+    "count_card_fails_1d"
+  ]
+}
