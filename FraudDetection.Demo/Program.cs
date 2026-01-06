@@ -202,7 +202,8 @@ var loadedInferencePipeline = new InferencePipeline(loadedFeatureExtractor, load
 var testTransaction = SampleDataGenerator.GenerateTransaction("PERSISTENCE-TEST", isFraud: true);
 var loadedPrediction = loadedInferencePipeline.Predict(testTransaction);
 
-stopwatch.Stop();
+var loadTime = stopwatch.ElapsedMilliseconds;
+Console.WriteLine($"   Model load + prediction time: {loadTime}ms");
 
 if (loadedPrediction != null)
 {
@@ -229,9 +230,14 @@ if (loadedPrediction != null)
                 Array.Copy(fv.Features, combinedFeatures, fv.Features.Length);
                 combinedFeatures[^1] = anomalyResult.AnomalyScore;
                 
+                var explainStopwatch = Stopwatch.StartNew();
                 var explanation = await loadedFraudClassifier.ExplainTransactionAsync(combinedFeatures, lgbModelPath);
+                explainStopwatch.Stop();
+                
                 if (explanation != null)
                 {
+                    Console.WriteLine($"      Explanation time: {explainStopwatch.ElapsedMilliseconds}ms");
+                    
                     // Parse and display top contributors
                     try
                     {
@@ -286,7 +292,8 @@ if (loadedPrediction != null)
         }
     }
 }
-Console.WriteLine($"   Total restart time: {stopwatch.ElapsedMilliseconds}ms");
+stopwatch.Stop();
+Console.WriteLine($"   Total time (load + predict + explain): {stopwatch.ElapsedMilliseconds}ms");
 Console.WriteLine();
 
 // Summary
