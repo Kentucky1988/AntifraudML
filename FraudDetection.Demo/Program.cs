@@ -73,7 +73,9 @@ if (trainingResult.Success)
     Console.WriteLine($"      Precision: {trainingResult.Metrics.Precision:P2}");
     Console.WriteLine($"      Recall:    {trainingResult.Metrics.Recall:P2}");
     Console.WriteLine($"      F1 Score:  {trainingResult.Metrics.F1Score:P2}");
+    Console.WriteLine($"      F2 Score:  {trainingResult.Metrics.F2Score:P2}");
     Console.WriteLine($"      AUC-ROC:   {trainingResult.Metrics.AucRoc:P2}");
+    Console.WriteLine($"      AUC-PR:    {trainingResult.Metrics.AucPr:P2}");
     Console.WriteLine();
     Console.WriteLine($"   Models saved to:");
     Console.WriteLine($"      - {trainingResult.IsolationForestModelPath}");
@@ -104,7 +106,9 @@ Console.WriteLine($"      Accuracy:  {testMetrics.Accuracy:P2}");
 Console.WriteLine($"      Precision: {testMetrics.Precision:P2}");
 Console.WriteLine($"      Recall:    {testMetrics.Recall:P2}");
 Console.WriteLine($"      F1 Score:  {testMetrics.F1Score:P2}");
+Console.WriteLine($"      F2 Score:  {testMetrics.F2Score:P2}");
 Console.WriteLine($"      AUC-ROC:   {testMetrics.AucRoc:P2}");
+Console.WriteLine($"      AUC-PR:    {testMetrics.AucPr:P2}");
 Console.WriteLine();
 
 // Step 6: Run inference pipeline demo
@@ -171,9 +175,10 @@ Console.WriteLine($"   Average latency: {avgLatency:F2}ms per transaction");
 Console.WriteLine($"   Detected: {fraudCount} fraud, {legitCount} legitimate");
 Console.WriteLine();
 
-// Step 8: Model persistence demo
+// Step 8: Model persistence demo (restart)
 Console.WriteLine("💾 Step 8: Model persistence demo...");
 Console.WriteLine("   Loading models from disk...");
+stopwatch.Restart();
 
 var loadedAnomalyDetector = new OnnxIsolationForestDetector(isolationForestConfig);
 var loadedFraudClassifier = new OnnxLightGbmClassifier(lightGbmConfig);
@@ -191,6 +196,8 @@ var loadedInferencePipeline = new InferencePipeline(loadedFeatureExtractor, load
 var testTransaction = SampleDataGenerator.GenerateTransaction("PERSISTENCE-TEST", isFraud: true);
 var loadedPrediction = loadedInferencePipeline.Predict(testTransaction);
 
+stopwatch.Stop();
+
 if (loadedPrediction != null)
 {
     Console.WriteLine($"   Loaded model prediction for {loadedPrediction.TransactionId}:");
@@ -198,6 +205,7 @@ if (loadedPrediction != null)
     Console.WriteLine($"      Confidence: {loadedPrediction.ConfidenceScore:P2}");
     Console.WriteLine($"      Anomaly Score: {loadedPrediction.AnomalyScore:F4}");
 }
+Console.WriteLine($"   Total restart time: {stopwatch.ElapsedMilliseconds}ms");
 Console.WriteLine();
 
 // Summary

@@ -6,11 +6,22 @@ import onnxmltools
 from onnxmltools.convert.common.data_types import FloatTensorType
 
 
-def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate: float = 0.1, n_estimators: int = 100):
+def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate: float = 0.1, 
+          n_estimators: int = 100, lambda_l2: float = 0.1, bagging_fraction: float = 0.8, 
+          bagging_freq: int = 1):
     """
     Тренує LightGBM класифікатор та зберігає у форматі ONNX.
+    Нормалізація не потрібна для дерев'яних моделей.
     
-    CSV має містити колонки: features (f0, f1, ...), anomaly_score, label
+    Args:
+        input_csv: CSV з features (f0, f1, ...) та label
+        output_onnx: Шлях для збереження ONNX моделі
+        num_leaves: Максимальна кількість листків в дереві
+        learning_rate: Швидкість навчання
+        n_estimators: Кількість ітерацій бустингу
+        lambda_l2: L2 регуляризація (запобігає overfitting)
+        bagging_fraction: Частка даних для кожного дерева (0.8 = 80%)
+        bagging_freq: Частота bagging (1 = кожну ітерацію)
     """
     try:
         df = pd.read_csv(input_csv)
@@ -30,18 +41,22 @@ def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate:
     
     print(f"Features: {X.shape[1]}, Positive samples: {y.sum()}, Negative: {len(y) - y.sum()}")
 
-    # Тренування LightGBM
+    # Тренування LightGBM з регуляризацією
     model = lgb.LGBMClassifier(
         num_leaves=num_leaves,
         learning_rate=learning_rate,
         n_estimators=n_estimators,
+        reg_lambda=lambda_l2,           # L2 регуляризація
+        subsample=bagging_fraction,      # Bagging fraction
+        subsample_freq=bagging_freq,     # Bagging frequency
         random_state=42,
         verbose=-1
     )
     model.fit(X, y)
-    print("Training completed.")
+    print(f"Training completed. Parameters: leaves={num_leaves}, lr={learning_rate}, "
+          f"iterations={n_estimators}, l2={lambda_l2}, bagging={bagging_fraction}")
 
-    # Конвертація в ONNX (використовуємо onnxmltools FloatTensorType)
+    # Конвертація в ONNX
     initial_type = [('float_input', FloatTensorType([None, X.shape[1]]))]
     onnx_model = onnxmltools.convert_lightgbm(
         model, 
@@ -62,6 +77,10 @@ if __name__ == "__main__":
     parser.add_argument("--leaves", type=int, default=31, help="Number of leaves (default: 31)")
     parser.add_argument("--lr", type=float, default=0.1, help="Learning rate (default: 0.1)")
     parser.add_argument("--iterations", type=int, default=100, help="Number of iterations (default: 100)")
+    parser.add_argument("--lambda_l2", type=float, default=0.1, help="L2 regularization (default: 0.1)")
+    parser.add_argument("--bagging", type=float, default=0.8, help="Bagging fraction (default: 0.8)")
+    parser.add_argument("--bagging_freq", type=int, default=1, help="Bagging frequency (default: 1)")
     args = parser.parse_args()
     
-    train(args.input, args.output, args.leaves, args.lr, args.iterations)
+    train(args.input, args.output, args.leaves, args.lr, args.iterations, 
+          args.lambda_l2, args.bagging, args.bagging_freq)

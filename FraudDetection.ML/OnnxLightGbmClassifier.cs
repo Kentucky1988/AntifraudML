@@ -140,7 +140,10 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
                     .Add("--output").Add(outputOnnx)
                     .Add("--leaves").Add(_config.NumberOfLeaves.ToString())
                     .Add("--lr").Add(_config.LearningRate.ToString(CultureInfo.InvariantCulture))
-                    .Add("--iterations").Add(_config.NumberOfIterations.ToString()))
+                    .Add("--iterations").Add(_config.NumberOfIterations.ToString())
+                    .Add("--lambda_l2").Add(_config.L2Regularization.ToString(CultureInfo.InvariantCulture))
+                    .Add("--bagging").Add(_config.BaggingFraction.ToString(CultureInfo.InvariantCulture))
+                    .Add("--bagging_freq").Add(_config.BaggingFreq.ToString()))
                 .WithValidation(CommandResultValidation.None)
                 .ExecuteBufferedAsync();
 
