@@ -64,10 +64,15 @@ def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate:
         target_opset=9
     )
 
-    # Збереження
+    # Збереження ONNX для inference
     with open(output_onnx, "wb") as f:
         f.write(onnx_model.SerializeToString())
-    print(f"Model saved to {output_onnx}")
+    print(f"ONNX model saved to {output_onnx}")
+    
+    # Збереження LightGBM native format для SHAP explanations
+    lgb_model_path = output_onnx.replace('.onnx', '.lgb.txt')
+    model.booster_.save_model(lgb_model_path)
+    print(f"LightGBM model saved to {lgb_model_path} (for SHAP explanations)")
 
 
 if __name__ == "__main__":

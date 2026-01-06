@@ -20,6 +20,7 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
     private readonly string _scriptPath;
     private InferenceSession? _session;
     private byte[]? _modelBytes;
+    private string? _lgbModelPath;
     private int _featureCount;
     private bool _disposed;
 
@@ -78,12 +79,15 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
             if (!success)
                 throw new InvalidOperationException("Python LightGBM training failed.");
 
+            // Store path to LightGBM native model for SHAP
+            _lgbModelPath = tempOnnx.Replace(".onnx", ".lgb.txt");
+            
             LoadModel(tempOnnx);
         }
         finally
         {
             if (File.Exists(tempCsv)) File.Delete(tempCsv);
-            if (File.Exists(tempOnnx)) File.Delete(tempOnnx);
+            // Don't delete tempOnnx and lgb.txt yet - they're needed for SaveModel
         }
     }
 
@@ -253,7 +257,13 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
             Directory.CreateDirectory(directory);
 
         File.WriteAllBytes(path, _modelBytes);
-        File.WriteAllText(path + ".meta", _featureCount.ToString());
+        
+        // Copy LightGBM native model for SHAP explanations if exists
+        if (!string.IsNullOrEmpty(_lgbModelPath) && File.Exists(_lgbModelPath))
+        {
+            var targetLgbPath = path.Replace(".onnx", ".lgb.txt");
+            File.Copy(_lgbModelPath, targetLgbPath, overwrite: true);
+        }
     }
 
     /// <summary>
@@ -267,10 +277,102 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
         _session?.Dispose();
         _modelBytes = File.ReadAllBytes(path);
         _session = new InferenceSession(_modelBytes);
+        
+        // Get feature count from ONNX model metadata
+        var inputMeta = _session.InputMetadata["float_input"];
+        _featureCount = (int)inputMeta.Dimensions[1];
+    }
 
-        var metaPath = path + ".meta";
-        if (File.Exists(metaPath))
-            _featureCount = int.Parse(File.ReadAllText(metaPath));
+    /// <summary>
+    /// Generates TreeSHAP explanation for a fraud prediction.
+    /// Runs Python script to calculate feature contributions.
+    /// </summary>
+    /// <param name="features">Combined features array (features + anomaly score).</param>
+    /// <param name="lgbModelPath">Path to LightGBM native model file (.lgb.txt).</param>
+    /// <returns>JSON string with SHAP explanation or null if failed.</returns>
+    public async Task<string?> ExplainTransactionAsync(float[] features, string lgbModelPath)
+    {
+        if (features == null || features.Length == 0)
+            throw new ArgumentException("Features cannot be null or empty.", nameof(features));
+
+        if (!File.Exists(lgbModelPath))
+            throw new FileNotFoundException("LightGBM model file not found for SHAP explanation.", lgbModelPath);
+
+        string tempCsv = Path.Combine(Path.GetTempPath(), $"explain_features_{Guid.NewGuid()}.csv");
+        string tempJson = Path.Combine(Path.GetTempPath(), $"explanation_{Guid.NewGuid()}.json");
+        string explainScript = GetExplainScriptPath();
+
+        try
+        {
+            // Export features to CSV
+            await ExportFeaturesToCsvAsync(features, tempCsv);
+
+            // Run explain script
+            var result = await Cli.Wrap(_pythonPath)
+                .WithArguments(args => args
+                    .Add(explainScript)
+                    .Add("--model").Add(lgbModelPath)
+                    .Add("--features").Add(tempCsv)
+                    .Add("--output").Add(tempJson)
+                    .Add("--top").Add("10"))
+                .WithValidation(CommandResultValidation.None)
+                .ExecuteBufferedAsync();
+
+            if (result.ExitCode == 0 && File.Exists(tempJson))
+            {
+                return await File.ReadAllTextAsync(tempJson);
+            }
+            else
+            {
+                Console.WriteLine($"SHAP explanation failed: {result.StandardError}");
+                return null;
+            }
+        }
+        finally
+        {
+            if (File.Exists(tempCsv)) File.Delete(tempCsv);
+            if (File.Exists(tempJson)) File.Delete(tempJson);
+        }
+    }
+
+    /// <summary>
+    /// Exports single feature row to CSV for SHAP explanation.
+    /// </summary>
+    private static async Task ExportFeaturesToCsvAsync(float[] features, string csvPath)
+    {
+        var sb = new StringBuilder();
+        
+        // Header
+        for (int i = 0; i < features.Length; i++)
+        {
+            if (i > 0) sb.Append(',');
+            sb.Append('f').Append(i);
+        }
+        sb.AppendLine();
+        
+        // Data row
+        for (int i = 0; i < features.Length; i++)
+        {
+            if (i > 0) sb.Append(',');
+            sb.Append(features[i].ToString(CultureInfo.InvariantCulture));
+        }
+        
+        await File.WriteAllTextAsync(csvPath, sb.ToString());
+    }
+
+    /// <summary>
+    /// Gets the path to the explain_prediction.py script.
+    /// </summary>
+    private static string GetExplainScriptPath()
+    {
+        var assemblyDir = Path.GetDirectoryName(typeof(OnnxLightGbmClassifier).Assembly.Location);
+        if (!string.IsNullOrEmpty(assemblyDir))
+        {
+            var scriptPath = Path.Combine(assemblyDir, "Scripts", "explain_prediction.py");
+            if (File.Exists(scriptPath))
+                return scriptPath;
+        }
+        return "Scripts/explain_prediction.py";
     }
 
     /// <summary>

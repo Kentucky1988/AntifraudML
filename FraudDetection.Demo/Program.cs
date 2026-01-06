@@ -4,6 +4,10 @@ using FraudDetection.Core.Models;
 using FraudDetection.Demo;
 using FraudDetection.ML;
 
+await RunDemoAsync();
+
+async Task RunDemoAsync()
+{
 Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
 Console.WriteLine("║       Fraud Detection POC - Demo Application                 ║");
 Console.WriteLine("║  Isolation Forest + LightGBM Two-Stage Detection System      ║");
@@ -99,7 +103,9 @@ Console.WriteLine("📊 Step 5: Evaluating on test data...");
 stopwatch.Restart();
 var testMetrics = trainingPipeline.Evaluate(testData);
 stopwatch.Stop();
+double avgEvalLatency = (double)stopwatch.ElapsedMilliseconds / TestDataSize;
 Console.WriteLine($"   Evaluation completed in {stopwatch.ElapsedMilliseconds}ms");
+Console.WriteLine($"   Average latency: {avgEvalLatency:F2}ms per transaction");
 Console.WriteLine();
 Console.WriteLine("   📈 Test Metrics:");
 Console.WriteLine($"      Accuracy:  {testMetrics.Accuracy:P2}");
@@ -204,6 +210,81 @@ if (loadedPrediction != null)
     Console.WriteLine($"      Is Fraud: {loadedPrediction.IsFraudTransaction}");
     Console.WriteLine($"      Confidence: {loadedPrediction.ConfidenceScore:P2}");
     Console.WriteLine($"      Anomaly Score: {loadedPrediction.AnomalyScore:F4}");
+    
+    // Generate SHAP explanation if fraud detected
+    if (loadedPrediction.IsFraudTransaction)
+    {
+        Console.WriteLine();
+        Console.WriteLine("   🔍 TreeSHAP Explanation (why flagged as fraud):");
+        
+        string lgbModelPath = LightGbmModelPath.Replace(".onnx", ".lgb.txt");
+        if (File.Exists(lgbModelPath))
+        {
+            // Get combined features for explanation
+            var fv = loadedFeatureExtractor.Extract(testTransaction);
+            if (fv != null)
+            {
+                var anomalyResult = loadedAnomalyDetector.Predict(fv);
+                var combinedFeatures = new float[fv.Features.Length + 1];
+                Array.Copy(fv.Features, combinedFeatures, fv.Features.Length);
+                combinedFeatures[^1] = anomalyResult.AnomalyScore;
+                
+                var explanation = await loadedFraudClassifier.ExplainTransactionAsync(combinedFeatures, lgbModelPath);
+                if (explanation != null)
+                {
+                    // Parse and display top contributors
+                    try
+                    {
+                        var json = System.Text.Json.JsonDocument.Parse(explanation);
+                        var topContributors = json.RootElement.GetProperty("top_contributors");
+                        
+                        // Get feature names for mapping
+                        var featureNames = FraudDetection.Core.Models.DepositCounter.AllCounterNames;
+                        
+                        Console.WriteLine("      Top contributing features:");
+                        int shown = 0;
+                        foreach (var contributor in topContributors.EnumerateArray())
+                        {
+                            if (shown >= 5) break;
+                            var feature = contributor.GetProperty("feature").GetString() ?? "";
+                            var shapValue = contributor.GetProperty("shap_value").GetDouble();
+                            var value = contributor.GetProperty("value").GetDouble();
+                            var sign = shapValue > 0 ? "+" : "";
+                            
+                            // Map f0, f1, etc. to actual counter names
+                            string displayName = feature;
+                            if (feature.StartsWith("f") && int.TryParse(feature[1..], out int idx))
+                            {
+                                if (idx < featureNames.Length)
+                                    displayName = featureNames[idx];
+                                else if (idx == featureNames.Length)
+                                    displayName = "anomaly_score";
+                            }
+                            
+                            Console.WriteLine($"         {sign}{shapValue:F4}  {displayName} = {value:F2}");
+                            shown++;
+                        }
+                        
+                        var summary = json.RootElement.GetProperty("summary").GetString();
+                        Console.WriteLine($"      Summary: {summary}");
+                    }
+                    catch
+                    {
+                        Console.WriteLine($"      Raw explanation: {explanation[..Math.Min(200, explanation.Length)]}...");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("      SHAP explanation generation failed.");
+                }
+            }
+        }
+        else
+        {
+            Console.WriteLine($"      LightGBM model file not found: {lgbModelPath}");
+            Console.WriteLine("      (SHAP explanations require .lgb.txt model file)");
+        }
+    }
 }
 Console.WriteLine($"   Total restart time: {stopwatch.ElapsedMilliseconds}ms");
 Console.WriteLine();
@@ -220,3 +301,4 @@ Console.WriteLine($"  • Average inference latency: {avgLatency:F2}ms");
 Console.WriteLine($"  • Models saved to ./models/");
 Console.WriteLine();
 Console.WriteLine("The fraud detection system is ready for production use!");
+}

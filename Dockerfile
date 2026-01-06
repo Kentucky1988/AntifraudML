@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir packaging pandas scikit-learn skl2onnx onnx onnxmltools lightgbm
+RUN pip install --no-cache-dir packaging pandas scikit-learn skl2onnx onnx onnxmltools lightgbm shap
 
 WORKDIR /app
 COPY --from=build /app/publish .
