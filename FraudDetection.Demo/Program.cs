@@ -15,7 +15,7 @@ Console.WriteLine("╚═══════════════════�
 Console.WriteLine();
 
 // Configuration
-const int TrainingDataSize = 1000;
+const int TrainingDataSize = 10_000;
 const int TestDataSize = 200;
 const float FraudRate = 0.1f;
 const string IsolationForestModelPath = "models/isolation_forest.onnx";
@@ -47,10 +47,10 @@ var isolationForestConfig = new IsolationForestConfig
 
 var lightGbmConfig = new LightGbmConfig
 {
-    NumberOfLeaves = 31,
+    NumberOfLeaves = 63,
     MinimumExampleCountPerLeaf = 20,
-    LearningRate = 0.1,
-    NumberOfIterations = 100
+    LearningRate = 0.05,
+    NumberOfIterations = 500
 };
 
 var featureExtractor = new FeatureExtractor();
@@ -69,7 +69,7 @@ stopwatch.Stop();
 
 if (trainingResult.Success)
 {
-    Console.WriteLine($"   Training IsolationForest completed successfully!");
+    Console.WriteLine($"   Training completed successfully!");
     Console.WriteLine($"   Time: {stopwatch.ElapsedMilliseconds}ms");
     Console.WriteLine();
     Console.WriteLine("   📈 Training Metrics:");
@@ -81,9 +81,13 @@ if (trainingResult.Success)
     Console.WriteLine($"      AUC-ROC:   {trainingResult.Metrics.AucRoc:P2}");
     Console.WriteLine($"      AUC-PR:    {trainingResult.Metrics.AucPr:P2}");
     Console.WriteLine();
-    Console.WriteLine($"   Models saved to:");
-    Console.WriteLine($"      - {trainingResult.IsolationForestModelPath}");
-    Console.WriteLine($"      - {trainingResult.LightGbmModelPath}");
+    
+    // Show model sizes
+    var ifSize = new FileInfo(trainingResult.IsolationForestModelPath).Length;
+    var lgbSize = new FileInfo(trainingResult.LightGbmModelPath).Length;
+    Console.WriteLine($"   💾 Models saved:");
+    Console.WriteLine($"      - {trainingResult.IsolationForestModelPath} ({ifSize / 1024.0:F1} KB)");
+    Console.WriteLine($"      - {trainingResult.LightGbmModelPath} ({lgbSize / 1024.0:F1} KB)");
 }
 else
 {

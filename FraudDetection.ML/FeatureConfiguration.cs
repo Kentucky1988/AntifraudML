@@ -36,15 +36,15 @@ public class FeatureConfiguration
             var json = File.ReadAllText(configPath);
             var config = JsonSerializer.Deserialize<FeatureConfigJson>(json);
             
-            if (config?.Features != null && config.Features.Length > 0)
+            if (config?.features != null && config.features.Length > 0)
             {
                 // Validate features exist in DepositCounter
                 var allCounters = new HashSet<string>(DepositCounter.AllCounterNames);
-                var validFeatures = config.Features.Where(f => allCounters.Contains(f)).ToArray();
+                var validFeatures = config.features.Where(f => allCounters.Contains(f)).ToArray();
                 
-                if (validFeatures.Length != config.Features.Length)
+                if (validFeatures.Length != config.features.Length)
                 {
-                    var invalid = config.Features.Except(validFeatures);
+                    var invalid = config.features.Except(validFeatures);
                     Console.WriteLine($"Warning: Unknown features in config: {string.Join(", ", invalid)}");
                 }
                 
@@ -120,8 +120,8 @@ public class FeatureConfiguration
 
     private class FeatureConfigJson
     {
-        public string? Description { get; set; }
-        public string? Version { get; set; }
-        public string[]? Features { get; set; }
+        public string? description { get; set; }
+        public string? version { get; set; }
+        public string[]? features { get; set; }
     }
 }

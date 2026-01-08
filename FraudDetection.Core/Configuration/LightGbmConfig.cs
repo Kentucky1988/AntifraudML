@@ -6,7 +6,7 @@ namespace FraudDetection.Core.Configuration;
 public class LightGbmConfig
 {
     /// <summary>
-    /// Maximum number of leaves in one tree. Range: 31-63.
+    /// Maximum number of leaves in one tree. Range: 31-127.
     /// </summary>
     public int NumberOfLeaves { get; set; } = 31;
     
@@ -21,7 +21,7 @@ public class LightGbmConfig
     public double LearningRate { get; set; } = 0.1;
     
     /// <summary>
-    /// Number of boosting iterations. Range: 100-300.
+    /// Number of boosting iterations. Range: 100-1000.
     /// </summary>
     public int NumberOfIterations { get; set; } = 100;
     
@@ -41,4 +41,18 @@ public class LightGbmConfig
     /// Frequency of bagging. 1 = every iteration. 0 = disabled.
     /// </summary>
     public int BaggingFreq { get; set; } = 1;
+    
+    /// <summary>
+    /// Controls weights of positive class (fraud).
+    /// Useful for unbalanced datasets.
+    /// True = automatic balancing based on class counts.
+    /// </summary>
+    public bool IsUnbalance { get; set; } = true;
+    
+    /// <summary>
+    /// Weight of positive class (fraud).
+    /// If fraud is 1% of data, set this to ~10-50 to make model pay attention to it.
+    /// Only used when IsUnbalance = false.
+    /// </summary>
+    public double ScalePosWeight { get; set; } = 1.0;
 }

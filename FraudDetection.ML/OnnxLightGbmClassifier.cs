@@ -147,7 +147,9 @@ public class OnnxLightGbmClassifier : IFraudClassifier, IDisposable
                     .Add("--iterations").Add(_config.NumberOfIterations.ToString())
                     .Add("--lambda_l2").Add(_config.L2Regularization.ToString(CultureInfo.InvariantCulture))
                     .Add("--bagging").Add(_config.BaggingFraction.ToString(CultureInfo.InvariantCulture))
-                    .Add("--bagging_freq").Add(_config.BaggingFreq.ToString()))
+                    .Add("--bagging_freq").Add(_config.BaggingFreq.ToString())
+                    .Add("--is_unbalance").Add(_config.IsUnbalance.ToString().ToLower())
+                    .Add("--scale_pos_weight").Add(_config.ScalePosWeight.ToString(CultureInfo.InvariantCulture)))
                 .WithValidation(CommandResultValidation.None)
                 .ExecuteBufferedAsync();
 

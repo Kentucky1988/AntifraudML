@@ -8,7 +8,7 @@ from onnxmltools.convert.common.data_types import FloatTensorType
 
 def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate: float = 0.1, 
           n_estimators: int = 100, lambda_l2: float = 0.1, bagging_fraction: float = 0.8, 
-          bagging_freq: int = 1):
+          bagging_freq: int = 1, is_unbalance: bool = True, scale_pos_weight: float = 1.0):
     """
     Тренує LightGBM класифікатор та зберігає у форматі ONNX.
     Нормалізація не потрібна для дерев'яних моделей.
@@ -22,6 +22,8 @@ def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate:
         lambda_l2: L2 регуляризація (запобігає overfitting)
         bagging_fraction: Частка даних для кожного дерева (0.8 = 80%)
         bagging_freq: Частота bagging (1 = кожну ітерацію)
+        is_unbalance: Автоматичне балансування класів (True = увімкнено)
+        scale_pos_weight: Вага позитивного класу (використовується якщо is_unbalance=False)
     """
     try:
         df = pd.read_csv(input_csv)
@@ -41,20 +43,30 @@ def train(input_csv: str, output_onnx: str, num_leaves: int = 31, learning_rate:
     
     print(f"Features: {X.shape[1]}, Positive samples: {y.sum()}, Negative: {len(y) - y.sum()}")
 
-    # Тренування LightGBM з регуляризацією
-    model = lgb.LGBMClassifier(
-        num_leaves=num_leaves,
-        learning_rate=learning_rate,
-        n_estimators=n_estimators,
-        reg_lambda=lambda_l2,           # L2 регуляризація
-        subsample=bagging_fraction,      # Bagging fraction
-        subsample_freq=bagging_freq,     # Bagging frequency
-        random_state=42,
-        verbose=-1
-    )
+    # Тренування LightGBM з регуляризацією та балансуванням класів
+    model_params = {
+        'num_leaves': num_leaves,
+        'learning_rate': learning_rate,
+        'n_estimators': n_estimators,
+        'reg_lambda': lambda_l2,           # L2 регуляризація
+        'subsample': bagging_fraction,      # Bagging fraction
+        'subsample_freq': bagging_freq,     # Bagging frequency
+        'random_state': 42,
+        'verbose': -1
+    }
+    
+    # Балансування класів: is_unbalance або scale_pos_weight
+    if is_unbalance:
+        model_params['is_unbalance'] = True
+    else:
+        model_params['scale_pos_weight'] = scale_pos_weight
+    
+    model = lgb.LGBMClassifier(**model_params)
     model.fit(X, y)
+    
+    balance_info = f"is_unbalance={is_unbalance}" if is_unbalance else f"scale_pos_weight={scale_pos_weight}"
     print(f"Training completed. Parameters: leaves={num_leaves}, lr={learning_rate}, "
-          f"iterations={n_estimators}, l2={lambda_l2}, bagging={bagging_fraction}")
+          f"iterations={n_estimators}, l2={lambda_l2}, bagging={bagging_fraction}, {balance_info}")
 
     # Конвертація в ONNX
     initial_type = [('float_input', FloatTensorType([None, X.shape[1]]))]
@@ -85,7 +97,11 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_l2", type=float, default=0.1, help="L2 regularization (default: 0.1)")
     parser.add_argument("--bagging", type=float, default=0.8, help="Bagging fraction (default: 0.8)")
     parser.add_argument("--bagging_freq", type=int, default=1, help="Bagging frequency (default: 1)")
+    parser.add_argument("--is_unbalance", type=lambda x: x.lower() == 'true', default=True, 
+                        help="Auto-balance classes (default: true)")
+    parser.add_argument("--scale_pos_weight", type=float, default=1.0, 
+                        help="Positive class weight (default: 1.0, used when is_unbalance=false)")
     args = parser.parse_args()
     
     train(args.input, args.output, args.leaves, args.lr, args.iterations, 
-          args.lambda_l2, args.bagging, args.bagging_freq)
+          args.lambda_l2, args.bagging, args.bagging_freq, args.is_unbalance, args.scale_pos_weight)
